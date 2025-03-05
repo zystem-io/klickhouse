@@ -69,8 +69,8 @@ impl Deserializer for MapDeserializer {
         let mut out = Vec::with_capacity(rows);
         let mut last_offset = 0u64;
         for offset in offsets {
-            let mut key_out = vec![];
-            let mut value_out = vec![];
+            let mut key_out = Vec::with_capacity((offset - last_offset) as usize);
+            let mut value_out = Vec::with_capacity((offset - last_offset) as usize);
             while last_offset < offset {
                 key_out.push(keys.next().unwrap());
                 value_out.push(values.next().unwrap());

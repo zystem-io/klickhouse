@@ -212,7 +212,7 @@ impl<T: FromSql + Hash + Eq, Y: FromSql> FromSql for HashMap<T, Y> {
         };
         match value {
             Value::Map(x, y) => {
-                let mut out = HashMap::new();
+                let mut out = HashMap::with_capacity(x.len().min(y.len()));
                 for (x, y) in x.into_iter().zip(y.into_iter()) {
                     out.insert(T::from_sql(x_type, x)?, Y::from_sql(y_type, y)?);
                 }
@@ -256,7 +256,7 @@ impl<T: FromSql + Hash + Eq, Y: FromSql> FromSql for IndexMap<T, Y> {
         };
         match value {
             Value::Map(x, y) => {
-                let mut out = IndexMap::new();
+                let mut out = IndexMap::with_capacity(x.len().min(y.len()));
                 for (x, y) in x.into_iter().zip(y.into_iter()) {
                     out.insert(T::from_sql(x_type, x)?, Y::from_sql(y_type, y)?);
                 }

@@ -50,7 +50,7 @@ impl<T: ArrayDeserializerGeneric + 'static> Deserializer for T {
         if rows == 0 {
             return Ok(vec![]);
         }
-        let mut offsets = vec![];
+        let mut offsets = Vec::with_capacity(rows);
         for _ in 0..rows {
             offsets.push(reader.read_u64_le().await?);
         }
