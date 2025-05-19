@@ -1,12 +1,12 @@
+use super::*;
+use crate::MaybeString;
+use indexmap::IndexMap;
+use std::sync::Arc;
 use std::{
     any::TypeId,
     collections::{BTreeMap, HashMap},
     hash::Hash,
 };
-
-use indexmap::IndexMap;
-
-use super::*;
 
 impl FromSql for bool {
     fn from_sql(type_: &Type, value: Value) -> Result<Self> {
@@ -170,7 +170,26 @@ impl FromSql for String {
             return Err(unexpected_type(type_));
         }
         match value {
-            Value::String(x) => Ok(String::from_utf8(x)?),
+            Value::String(x) => Ok(String::try_from(x)?),
+            _ => unimplemented!(),
+        }
+    }
+}
+
+impl FromSql for Arc<String> {
+    fn from_sql(type_: &Type, value: Value) -> Result<Self> {
+        if !matches!(type_, Type::String | Type::FixedString(_)) {
+            return Err(unexpected_type(type_));
+        }
+
+        match value {
+            Value::String(x) => match x {
+                MaybeString::String(s) => Ok(s),
+                MaybeString::Bytes(b) => {
+                    let s = String::from_utf8(b)?;
+                    Ok(Arc::new(s))
+                }
+            },
             _ => unimplemented!(),
         }
     }
@@ -190,6 +209,7 @@ impl<T: FromSql + 'static> FromSql for Vec<T> {
                     return Err(unexpected_type(subtype));
                 }
                 assert_eq!(std::mem::size_of::<T>(), 1);
+                let x: Vec<u8> = x.into();
                 Ok(unsafe { std::mem::transmute::<Vec<u8>, Vec<T>>(x) })
             }
             Value::Array(x) => Ok(x

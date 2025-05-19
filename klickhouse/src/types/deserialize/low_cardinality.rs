@@ -12,7 +12,7 @@ impl Deserializer for LowCardinalityDeserializer {
     async fn read_prefix<R: ClickhouseRead>(
         _type_: &Type,
         reader: &mut R,
-        _state: &mut DeserializerState,
+        _state: &mut DeserializerState<'_>,
     ) -> Result<()> {
         let version = reader.read_u64_le().await?;
         if version != LOW_CARDINALITY_VERSION {
@@ -28,7 +28,7 @@ impl Deserializer for LowCardinalityDeserializer {
         type_: &Type,
         reader: &mut R,
         rows: usize,
-        state: &mut DeserializerState,
+        state: &mut DeserializerState<'_>,
     ) -> Result<Vec<Value>> {
         Ok(match type_ {
             Type::LowCardinality(inner) => {

@@ -1,8 +1,9 @@
-use std::future::Future;
-use std::{fmt::Display, str::FromStr};
-
+use ahash::AHasher;
 pub use chrono_tz::Tz;
 use futures_util::FutureExt;
+use std::future::Future;
+use std::hash::{Hash, Hasher};
+use std::{fmt::Display, str::FromStr};
 use uuid::Uuid;
 
 mod deserialize;
@@ -17,8 +18,11 @@ use crate::{
     protocol::MAX_STRING_SIZE,
     u256,
     values::Value,
-    Date, DateTime, DynDateTime64, Ipv4, Ipv6, KlickhouseError, Result,
+    Date, DateTime, DynDateTime64, Ipv4, Ipv6, KlickhouseError, MaybeString, Result,
 };
+
+use crate::internal_client_in::Context;
+use hashbrown::HashTable;
 
 /// A raw Clickhouse type.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -163,8 +167,8 @@ impl Type {
             Type::Decimal64(s) => Value::Decimal64(*s, 0),
             Type::Decimal128(s) => Value::Decimal128(*s, 0),
             Type::Decimal256(s) => Value::Decimal256(*s, i256::default()),
-            Type::String => Value::String(vec![]),
-            Type::FixedString(_) => Value::String(vec![]),
+            Type::String => Value::String(MaybeString::Bytes(vec![])),
+            Type::FixedString(_) => Value::String(MaybeString::Bytes(vec![])),
             Type::Uuid => Value::Uuid(Uuid::from_u128(0)),
             Type::Date => Value::Date(Date(0)),
             Type::DateTime(tz) => Value::DateTime(DateTime(*tz, 0)),
@@ -1023,7 +1027,47 @@ impl Type {
     }
 }
 
-pub struct DeserializerState {}
+pub struct DeserializerState<'a> {
+    pub(crate) interned_strings: &'a mut HashTable<MaybeString>,
+    pub(crate) string_buf: &'a mut Vec<u8>,
+    pub(crate) decompress_buf: Option<&'a mut Vec<u8>>,
+}
+
+impl<'a> From<&'a mut Context> for DeserializerState<'a> {
+    fn from(value: &'a mut Context) -> Self {
+        Self {
+            interned_strings: &mut value.interned_strings,
+            string_buf: &mut value.string_buf,
+            decompress_buf: value.decompress_buf.as_mut(),
+        }
+    }
+}
+
+pub(crate) fn slice_hash(slice: &[u8]) -> u64 {
+    let mut hasher = AHasher::default();
+    slice.hash(&mut hasher);
+    hasher.finish()
+}
+
+pub(crate) fn maybe_string_hash(maybe_string: &MaybeString) -> u64 {
+    let mut hasher = AHasher::default();
+    maybe_string.hash(&mut hasher);
+    hasher.finish()
+}
+
+impl DeserializerState<'_> {
+    pub(crate) fn intern_slice(&mut self, bytes: &[u8]) -> Value {
+        let key = slice_hash(bytes);
+        let eq = |val: &MaybeString| val.as_ref() == bytes;
+        let mbs = self
+            .interned_strings
+            .entry(key, eq, maybe_string_hash)
+            .or_insert_with(|| MaybeString::from(bytes.to_vec()))
+            .get()
+            .clone();
+        Value::String(mbs)
+    }
+}
 
 pub struct SerializerState {}
 

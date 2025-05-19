@@ -1,11 +1,11 @@
+use super::*;
+use crate::MaybeString;
+use indexmap::IndexMap;
+use std::sync::Arc;
 use std::{
     any::TypeId,
     collections::{BTreeMap, HashMap},
 };
-
-use indexmap::IndexMap;
-
-use super::*;
 
 impl ToSql for u8 {
     fn to_sql(self, _type_hint: Option<&Type>) -> Result<Value> {
@@ -87,13 +87,21 @@ impl ToSql for f64 {
 
 impl ToSql for String {
     fn to_sql(self, _type_hint: Option<&Type>) -> Result<Value> {
-        Ok(Value::String(self.into_bytes()))
+        Ok(Value::String(MaybeString::String(Arc::new(self))))
     }
 }
 
 impl<'a> ToSql for &'a str {
     fn to_sql(self, _type_hint: Option<&Type>) -> Result<Value> {
-        Ok(Value::String(self.as_bytes().to_vec()))
+        Ok(Value::String(MaybeString::String(Arc::new(
+            self.to_owned(),
+        ))))
+    }
+}
+
+impl ToSql for Arc<String> {
+    fn to_sql(self, _type_hint: Option<&Type>) -> Result<Value> {
+        Ok(Value::String(MaybeString::String(self)))
     }
 }
 
@@ -106,9 +114,9 @@ impl<T: ToSql + 'static> ToSql for Vec<T> {
             let type_id = TypeId::of::<T>();
             if type_id == TypeId::of::<u8>() || type_id == TypeId::of::<i8>() {
                 assert_eq!(std::mem::size_of::<T>(), 1);
-                return Ok(Value::String(unsafe {
+                return Ok(Value::String(MaybeString::Bytes(unsafe {
                     std::mem::transmute::<Vec<T>, Vec<u8>>(self)
-                }));
+                })));
             }
         }
         Ok(Value::Array(

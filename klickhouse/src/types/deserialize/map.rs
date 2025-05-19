@@ -12,7 +12,7 @@ impl Deserializer for MapDeserializer {
     async fn read_prefix<R: ClickhouseRead>(
         type_: &Type,
         reader: &mut R,
-        state: &mut DeserializerState,
+        state: &mut DeserializerState<'_>,
     ) -> Result<()> {
         match type_ {
             Type::Map(key, value) => {
@@ -31,7 +31,7 @@ impl Deserializer for MapDeserializer {
         type_: &Type,
         reader: &mut R,
         rows: usize,
-        state: &mut DeserializerState,
+        state: &mut DeserializerState<'_>,
     ) -> Result<Vec<Value>> {
         if rows > MAX_STRING_SIZE {
             return Err(KlickhouseError::ProtocolError(format!(

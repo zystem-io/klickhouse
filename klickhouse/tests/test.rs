@@ -1,10 +1,10 @@
-use std::net::{Ipv4Addr, Ipv6Addr};
-
 use indexmap::IndexMap;
 use klickhouse::{
     i256, u256, Date, DateTime, DateTime64, FixedPoint128, FixedPoint256, FixedPoint32,
     FixedPoint64, Ipv4, Ipv6, Uuid,
 };
+use std::net::{Ipv4Addr, Ipv6Addr};
+use std::sync::Arc;
 
 #[derive(klickhouse::Row, Debug, Default, PartialEq, Clone)]
 pub struct TestType {
@@ -48,6 +48,10 @@ pub struct TestType {
     d_low_card_string: String,
     d_low_card_array: Vec<String>,
     d_low_card_array_nulls: Vec<Option<String>>,
+
+    d_low_card_arc_string: Arc<String>,
+    d_low_card_array_arc_string: Vec<Arc<String>>,
+    d_low_card_array_arc_nulls: Vec<Option<Arc<String>>>,
 
     d_array_nulls: Vec<Option<String>>,
     d_ip4: Ipv4,
@@ -97,6 +101,11 @@ async fn test_client() {
         d_low_card_array Array(LowCardinality(String)) default array('test1', 'test2'),
         d_array_nulls Array(Nullable(String)),
         d_low_card_array_nulls Array(LowCardinality(Nullable(String))),
+        
+        d_low_card_arc_string LowCardinality(String) default 'Arc<String>',
+        d_low_card_array_arc_string Array(LowCardinality(String)) default array('test1', 'test2'),
+        d_low_card_array_arc_nulls Array(LowCardinality(Nullable(String))),
+        
         d_ip4 IPv4,
         d_ip6 IPv6
     ", &client).await;

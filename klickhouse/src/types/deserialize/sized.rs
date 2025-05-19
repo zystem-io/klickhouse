@@ -14,7 +14,7 @@ impl Deserializer for SizedDeserializer {
         type_: &Type,
         reader: &mut R,
         rows: usize,
-        _state: &mut DeserializerState,
+        _state: &mut DeserializerState<'_>,
     ) -> Result<Vec<Value>> {
         let mut out = Vec::with_capacity(rows);
         for _ in 0..rows {

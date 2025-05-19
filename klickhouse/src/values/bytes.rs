@@ -1,6 +1,6 @@
 use std::ops::{Deref, DerefMut};
 
-use crate::{unexpected_type, FromSql, Result, ToSql, Type, Value};
+use crate::{unexpected_type, FromSql, MaybeString, Result, ToSql, Type, Value};
 
 /// Wrapper over Vec<u8> to allow more efficient serialization/deserialization of raw bytes
 /// The corresponding Clickhouse type here is String or FixedString, not Array(UInt8).
@@ -21,7 +21,7 @@ impl ToSql for Bytes {
                     })
                     .collect(),
             )),
-            _ => Ok(Value::String(self.0)),
+            _ => Ok(Value::String(MaybeString::Bytes(self.0))),
         }
     }
 }
@@ -30,7 +30,10 @@ impl FromSql for Bytes {
     fn from_sql(type_: &Type, value: Value) -> Result<Self> {
         match type_ {
             Type::String | Type::FixedString(_) => match value {
-                Value::String(s) => Ok(Self(s)),
+                Value::String(s) => {
+                    let bytes: Vec<u8> = s.into();
+                    Ok(Self(bytes))
+                }
                 _ => unreachable!(),
             },
             Type::Array(x) if **x == Type::UInt8 || **x == Type::Int8 => match value {

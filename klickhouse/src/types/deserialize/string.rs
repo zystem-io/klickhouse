@@ -12,25 +12,24 @@ impl Deserializer for StringDeserializer {
         type_: &Type,
         reader: &mut R,
         rows: usize,
-        _state: &mut DeserializerState,
+        state: &mut DeserializerState<'_>,
     ) -> Result<Vec<Value>> {
         match type_ {
-            Type::String => {
-                let mut out = Vec::with_capacity(rows);
-                for _ in 0..rows {
-                    out.push(Value::String(reader.read_string().await?));
+            Type::String => reader.read_all_strings(state, rows).await,
+            Type::FixedString(len) => {
+                let len = *len;
+                if len > state.string_buf.capacity() {
+                    state.string_buf.reserve(len - state.string_buf.capacity());
                 }
-                Ok(out)
-            }
-            Type::FixedString(n) => {
+                let buf_mut =
+                    unsafe { std::slice::from_raw_parts_mut(state.string_buf.as_mut_ptr(), len) };
+
                 let mut out = Vec::with_capacity(rows);
                 for _ in 0..rows {
-                    let mut buf = Vec::with_capacity(*n);
-                    unsafe { buf.set_len(*n) };
-                    reader.read_exact(&mut buf[..]).await?;
-                    let first_null = buf.iter().position(|x| *x == 0).unwrap_or(buf.len());
-                    buf.truncate(first_null);
-                    out.push(Value::String(buf));
+                    reader.read_exact(buf_mut).await?;
+                    let first_null = buf_mut.iter().position(|x| *x == 0).unwrap_or(len);
+                    let effective_slice = state.intern_slice(&buf_mut[..first_null]);
+                    out.push(effective_slice);
                 }
                 Ok(out)
             }

@@ -2,9 +2,10 @@ use std::future::Future;
 
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
-use crate::{KlickhouseError, Result};
+use crate::{KlickhouseError, Result, Value};
 
 use crate::protocol::MAX_STRING_SIZE;
+use crate::types::DeserializerState;
 
 pub trait ClickhouseRead: AsyncRead + Unpin + Send + Sync {
     fn read_var_uint(&mut self) -> impl Future<Output = Result<u64>> + Send;
@@ -14,6 +15,12 @@ pub trait ClickhouseRead: AsyncRead + Unpin + Send + Sync {
     fn read_utf8_string(&mut self) -> impl Future<Output = Result<String>> + Send {
         async { Ok(String::from_utf8(self.read_string().await?)?) }
     }
+
+    fn read_all_strings(
+        &mut self,
+        state: &mut DeserializerState<'_>,
+        rows: usize,
+    ) -> impl Future<Output = Result<Vec<Value>>> + Send;
 }
 
 impl<T: AsyncRead + Unpin + Send + Sync> ClickhouseRead for T {
@@ -48,6 +55,38 @@ impl<T: AsyncRead + Unpin + Send + Sync> ClickhouseRead for T {
         unsafe { buf.set_len(len as usize) };
 
         Ok(buf)
+    }
+
+    async fn read_all_strings(
+        &mut self,
+        state: &mut DeserializerState<'_>,
+        rows: usize,
+    ) -> Result<Vec<Value>> {
+        let mut out = Vec::with_capacity(rows);
+
+        for _ in 0..rows {
+            let len = self.read_var_uint().await?;
+            if len as usize > MAX_STRING_SIZE {
+                return Err(KlickhouseError::ProtocolError(format!(
+                    "string too large: {} > {}",
+                    len, MAX_STRING_SIZE
+                )));
+            }
+            if len as usize > state.string_buf.capacity() {
+                state
+                    .string_buf
+                    .reserve(len as usize - state.string_buf.capacity());
+            }
+
+            let buf_mut = unsafe {
+                std::slice::from_raw_parts_mut(state.string_buf.as_mut_ptr(), len as usize)
+            };
+            self.read_exact(buf_mut).await?;
+
+            out.push(state.intern_slice(buf_mut));
+        }
+
+        Ok(out)
     }
 }
 

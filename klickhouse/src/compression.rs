@@ -63,9 +63,10 @@ pub fn decompress_block(data: &[u8], decompressed_size: u32) -> Result<Vec<u8>> 
     Ok(output)
 }
 
-async fn read_compressed_blob(
+async fn read_compressed_blob<'a>(
     reader: &mut impl ClickhouseRead,
     compression: CompressionMethod,
+    compressed: &mut Vec<u8>,
 ) -> Result<Vec<u8>> {
     let checksum =
         (reader.read_u64_le().await? as u128) << 64u128 | (reader.read_u64_le().await? as u128);
@@ -91,8 +92,17 @@ async fn read_compressed_blob(
             compressed_size
         )));
     }
+
+    if compressed.capacity() < compressed_size as usize {
+        compressed.reserve(compressed_size as usize - compressed.capacity());
+    }
+    unsafe {
+        compressed.set_len(compressed_size as usize);
+    }
+
     let decompressed_size = reader.read_u32_le().await?;
-    let mut compressed = vec![0u8; compressed_size as usize];
+
+    compressed.reserve(compressed_size as usize);
     reader.read_exact(&mut compressed[9..]).await?;
     compressed[0] = type_byte;
     compressed[1..5].copy_from_slice(&compressed_size.to_le_bytes()[..]);
@@ -104,12 +114,13 @@ async fn read_compressed_blob(
             calc_checksum, checksum
         )));
     }
-    let raw_block = crate::compression::decompress_block(&compressed[9..], decompressed_size)?;
+    let raw_block = decompress_block(&compressed[9..], decompressed_size)?;
     Ok(raw_block)
 }
 
-type BlockReadingFuture<R> =
-    Pin<Box<dyn Future<Output = Result<(Vec<u8>, &'static mut R)>> + Send + Sync>>;
+type BlockReadingFuture<R> = Pin<
+    Box<dyn Future<Output = Result<(Vec<u8>, &'static mut R, &'static mut Vec<u8>)>> + Send + Sync>,
+>;
 
 pub struct DecompressionReader<'a, R: ClickhouseRead + 'static> {
     mode: CompressionMethod,
@@ -117,16 +128,18 @@ pub struct DecompressionReader<'a, R: ClickhouseRead + 'static> {
     decompressed: Vec<u8>,
     position: usize,
     block_reading_future: Option<BlockReadingFuture<R>>,
+    buf: Option<&'a mut Vec<u8>>,
 }
 
 impl<'a, R: ClickhouseRead + 'static> DecompressionReader<'a, R> {
-    pub fn new(mode: CompressionMethod, inner: &'a mut R) -> Self {
+    pub fn new(mode: CompressionMethod, inner: &'a mut R, buf: &'a mut Vec<u8>) -> Self {
         Self {
             mode,
             inner: Some(inner),
             decompressed: vec![],
             position: 0,
             block_reading_future: None,
+            buf: Some(buf),
         }
     }
 
@@ -137,11 +150,12 @@ impl<'a, R: ClickhouseRead + 'static> DecompressionReader<'a, R> {
         if let Some(block_reading_future) = self.block_reading_future.as_mut() {
             match block_reading_future.poll_unpin(cx) {
                 Poll::Pending => Poll::Pending,
-                Poll::Ready(Ok((value, inner))) => {
+                Poll::Ready(Ok((value, inner, buf))) => {
                     self.block_reading_future.take();
                     self.decompressed = value;
                     assert!(self.inner.is_none());
                     self.inner = Some(inner);
+                    self.buf = Some(buf);
                     self.position = 0;
                     Poll::Ready(Ok(()))
                 }
@@ -181,9 +195,12 @@ impl<'a, R: ClickhouseRead + 'static> AsyncRead for DecompressionReader<'a, R> {
             let static_inner: &'static mut R =
                 unsafe { std::mem::transmute(self.inner.take().unwrap()) };
             let mode = self.mode;
+            let alloc_buf: &'static mut Vec<u8> =
+                unsafe { std::mem::transmute(self.buf.take().unwrap()) };
+
             self.block_reading_future = Some(Box::pin(async move {
-                let value = read_compressed_blob(static_inner, mode).await?;
-                Ok((value, static_inner))
+                let value = read_compressed_blob(static_inner, mode, alloc_buf).await?;
+                Ok((value, static_inner, alloc_buf))
             }));
             match self.run_decompression(cx) {
                 Poll::Pending => return Poll::Pending,
