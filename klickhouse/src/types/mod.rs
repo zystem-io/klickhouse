@@ -3,6 +3,7 @@ pub use chrono_tz::Tz;
 use futures_util::FutureExt;
 use std::future::Future;
 use std::hash::{Hash, Hasher};
+use std::sync::Arc;
 use std::{fmt::Display, str::FromStr};
 use uuid::Uuid;
 
@@ -22,6 +23,7 @@ use crate::{
 };
 
 use crate::internal_client_in::Context;
+use crate::interner::Interner;
 use hashbrown::HashTable;
 
 /// A raw Clickhouse type.
@@ -1028,7 +1030,7 @@ impl Type {
 }
 
 pub struct DeserializerState<'a> {
-    pub(crate) interned_strings: &'a mut HashTable<MaybeString>,
+    pub(crate) interner: Arc<dyn Interner>,
     pub(crate) string_buf: &'a mut Vec<u8>,
     pub(crate) decompress_buf: Option<&'a mut Vec<u8>>,
 }
@@ -1036,7 +1038,7 @@ pub struct DeserializerState<'a> {
 impl<'a> From<&'a mut Context> for DeserializerState<'a> {
     fn from(value: &'a mut Context) -> Self {
         Self {
-            interned_strings: &mut value.interned_strings,
+            interner: Arc::clone(&value.interner),
             string_buf: &mut value.string_buf,
             decompress_buf: value.decompress_buf.as_mut(),
         }
@@ -1053,20 +1055,6 @@ pub(crate) fn maybe_string_hash(maybe_string: &MaybeString) -> u64 {
     let mut hasher = AHasher::default();
     maybe_string.hash(&mut hasher);
     hasher.finish()
-}
-
-impl DeserializerState<'_> {
-    pub(crate) fn intern_slice(&mut self, bytes: &[u8]) -> Value {
-        let key = slice_hash(bytes);
-        let eq = |val: &MaybeString| val.as_ref() == bytes;
-        let mbs = self
-            .interned_strings
-            .entry(key, eq, maybe_string_hash)
-            .or_insert_with(|| MaybeString::from(bytes.to_vec()))
-            .get()
-            .clone();
-        Value::String(mbs)
-    }
 }
 
 pub struct SerializerState {}

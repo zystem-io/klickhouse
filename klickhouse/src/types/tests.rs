@@ -1,7 +1,6 @@
-use std::io::Cursor;
-
 use super::Type;
 use crate::internal_client_in::Context;
+use crate::interner::SimpleInterner;
 use crate::Result;
 use crate::{
     i256,
@@ -10,6 +9,8 @@ use crate::{
     values::{self, Value},
     Date, DateTime, DynDateTime64,
 };
+use std::io::Cursor;
+use std::sync::Arc;
 use uuid::Uuid;
 
 async fn roundtrip_values(type_: &Type, values: &[Value]) -> Result<Vec<Value>> {
@@ -25,7 +26,8 @@ async fn roundtrip_values(type_: &Type, values: &[Value]) -> Result<Vec<Value>> 
     }
     println!();
     let mut input = Cursor::new(output);
-    let mut context = Context::new(5, 5, 5);
+    let interner = SimpleInterner::new(5);
+    let mut context = Context::new(5, 5, Arc::new(interner));
     let mut state = DeserializerState::from(&mut context);
     type_.deserialize_prefix(&mut input, &mut state).await?;
     let deserialized = type_

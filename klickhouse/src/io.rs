@@ -83,7 +83,7 @@ impl<T: AsyncRead + Unpin + Send + Sync> ClickhouseRead for T {
             };
             self.read_exact(buf_mut).await?;
 
-            out.push(state.intern_slice(buf_mut));
+            out.push(Value::String(state.interner.intern_slice(buf_mut)));
         }
 
         Ok(out)

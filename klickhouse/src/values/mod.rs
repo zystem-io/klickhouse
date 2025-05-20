@@ -33,7 +33,7 @@ mod tests;
 #[derive(Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum MaybeString {
-    String(Arc<String>),
+    String(Arc<str>),
     Bytes(Vec<u8>),
 }
 
@@ -58,13 +58,13 @@ impl Eq for MaybeString {}
 
 impl From<String> for MaybeString {
     fn from(value: String) -> Self {
-        MaybeString::String(Arc::new(value))
+        MaybeString::String(Arc::from(value))
     }
 }
 
 impl From<&str> for MaybeString {
     fn from(value: &str) -> Self {
-        MaybeString::String(Arc::new(value.to_owned()))
+        MaybeString::String(Arc::from(value))
     }
 }
 
@@ -73,11 +73,7 @@ impl TryFrom<MaybeString> for String {
 
     fn try_from(value: MaybeString) -> std::result::Result<Self, Self::Error> {
         match value {
-            MaybeString::String(x) => match Arc::try_unwrap(x) {
-                Ok(s) => Ok(s),
-                Err(x) => Ok(x.as_ref().to_owned()),
-            },
-
+            MaybeString::String(x) => Ok(String::from(x.as_ref())),
             MaybeString::Bytes(b) => String::from_utf8(b),
         }
     }
@@ -86,7 +82,7 @@ impl TryFrom<MaybeString> for String {
 impl From<Vec<u8>> for MaybeString {
     fn from(value: Vec<u8>) -> Self {
         match String::from_utf8(value) {
-            Ok(s) => MaybeString::String(Arc::new(s)),
+            Ok(s) => MaybeString::String(Arc::from(s)),
             Err(err) => MaybeString::Bytes(err.into_bytes()),
         }
     }
@@ -94,15 +90,8 @@ impl From<Vec<u8>> for MaybeString {
 
 impl From<MaybeString> for Vec<u8> {
     fn from(value: MaybeString) -> Self {
-        println!("Bad conversion from string to bytes: {value:?}");
-
         match value {
-            MaybeString::String(x) => match Arc::try_unwrap(x) {
-                Ok(s) => s.into_bytes(),
-
-                Err(x) => x.as_bytes().to_vec(),
-            },
-
+            MaybeString::String(x) => x.as_bytes().to_vec(),
             MaybeString::Bytes(x) => x,
         }
     }
@@ -281,7 +270,7 @@ impl Eq for Value {}
 
 impl Value {
     pub fn string(value: impl Into<String>) -> Self {
-        Value::String(MaybeString::String(Arc::new(value.into())))
+        Value::String(MaybeString::String(Arc::from(value.into())))
     }
 
     pub(crate) fn index_value(&self) -> usize {

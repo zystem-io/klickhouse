@@ -1,3 +1,4 @@
+use crate::interner::Interner;
 use crate::types::DeserializerState;
 use crate::{
     block::Block,
@@ -12,11 +13,11 @@ use crate::{
     },
     KlickhouseError,
 };
-use crate::{ClientOptions, MaybeString, Result};
-use hashbrown::HashTable;
+use crate::{ClientOptions, Result};
 use indexmap::IndexMap;
-use log::{debug, trace};
+use log::trace;
 use protocol::ServerPacketId;
+use std::sync::Arc;
 use tokio::io::AsyncReadExt;
 use uuid::Uuid;
 
@@ -24,10 +25,9 @@ use uuid::Uuid;
 pub(crate) const MAX_COMPRESSION_SIZE: u32 = 0x40000000;
 
 pub(crate) struct Context {
-    pub(crate) interned_strings: HashTable<MaybeString>,
     pub(crate) string_buf: Vec<u8>,
     pub(crate) decompress_buf: Option<Vec<u8>>,
-    n_strings: usize,
+    pub(crate) interner: Arc<dyn Interner>,
     string_buf_capacity: usize,
     decompress_buf_capacity: usize,
 }
@@ -37,22 +37,21 @@ impl From<&ClientOptions> for Context {
         Self::new(
             value.num_interned_strings,
             value.buf_capacity,
-            value.decompress_buf_capacity,
+            Arc::clone(&value.interner),
         )
     }
 }
 
 impl Context {
     pub(crate) fn new(
-        n_strings: usize,
         string_buf_capacity: usize,
         decompress_buf_capacity: usize,
+        interner: Arc<dyn Interner>,
     ) -> Self {
         Self {
-            interned_strings: HashTable::with_capacity(n_strings),
+            interner,
             string_buf: Vec::with_capacity(string_buf_capacity),
             decompress_buf: Some(Vec::with_capacity(decompress_buf_capacity)),
-            n_strings,
             string_buf_capacity,
             decompress_buf_capacity,
         }
@@ -63,15 +62,7 @@ impl Context {
         if let Some(buf) = self.decompress_buf.as_mut() {
             buf.truncate(self.decompress_buf_capacity);
         }
-        if self.interned_strings.len() > self.n_strings {
-            self.interned_strings
-                .retain(|s| matches!(s, MaybeString::String(_)));
-        }
-        // todo: do something else
-        if self.interned_strings.len() > self.n_strings {
-            debug!("Exceeded interned string limit, clearing all interned strings");
-            self.interned_strings.clear();
-        }
+        self.interner.cleanup();
     }
 }
 

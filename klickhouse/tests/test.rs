@@ -49,9 +49,9 @@ pub struct TestType {
     d_low_card_array: Vec<String>,
     d_low_card_array_nulls: Vec<Option<String>>,
 
-    d_low_card_arc_string: Arc<String>,
-    d_low_card_array_arc_string: Vec<Arc<String>>,
-    d_low_card_array_arc_nulls: Vec<Option<Arc<String>>>,
+    d_low_card_arc_string: Arc<str>,
+    d_low_card_array_arc_string: Vec<Arc<str>>,
+    d_low_card_array_arc_nulls: Vec<Option<Arc<str>>>,
 
     d_array_nulls: Vec<Option<String>>,
     d_ip4: Ipv4,

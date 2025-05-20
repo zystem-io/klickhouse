@@ -28,8 +28,8 @@ impl Deserializer for StringDeserializer {
                 for _ in 0..rows {
                     reader.read_exact(buf_mut).await?;
                     let first_null = buf_mut.iter().position(|x| *x == 0).unwrap_or(len);
-                    let effective_slice = state.intern_slice(&buf_mut[..first_null]);
-                    out.push(effective_slice);
+                    let effective_slice = state.interner.intern_slice(&buf_mut[..first_null]);
+                    out.push(Value::String(effective_slice));
                 }
                 Ok(out)
             }

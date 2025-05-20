@@ -87,21 +87,19 @@ impl ToSql for f64 {
 
 impl ToSql for String {
     fn to_sql(self, _type_hint: Option<&Type>) -> Result<Value> {
-        Ok(Value::String(MaybeString::String(Arc::new(self))))
+        Ok(Value::String(MaybeString::String(Arc::from(self))))
     }
 }
 
 impl<'a> ToSql for &'a str {
     fn to_sql(self, _type_hint: Option<&Type>) -> Result<Value> {
-        Ok(Value::String(MaybeString::String(Arc::new(
-            self.to_owned(),
-        ))))
+        Ok(Value::String(MaybeString::String(Arc::from(self))))
     }
 }
 
-impl ToSql for Arc<String> {
+impl ToSql for Arc<str> {
     fn to_sql(self, _type_hint: Option<&Type>) -> Result<Value> {
-        Ok(Value::String(MaybeString::String(self)))
+        Ok(Value::String(MaybeString::String(Arc::clone(&self))))
     }
 }
 

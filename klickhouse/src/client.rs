@@ -1,8 +1,9 @@
-use std::collections::VecDeque;
-
 use futures_util::{stream, Stream, StreamExt};
 use indexmap::IndexMap;
 use protocol::CompressionMethod;
+use std::collections::VecDeque;
+use std::fmt::Debug;
+use std::sync::Arc;
 use tokio::{
     io::{AsyncRead, AsyncWrite, BufReader, BufWriter},
     net::{TcpStream, ToSocketAddrs},
@@ -17,6 +18,7 @@ use tokio_stream::wrappers::ReceiverStream;
 use uuid::Uuid;
 
 use crate::internal_client_in::Context;
+use crate::interner::{Interner, SimpleInterner};
 use crate::{
     block::{Block, BlockInfo},
     convert::Row,
@@ -252,6 +254,7 @@ pub struct ClientOptions {
     pub num_interned_strings: usize,
     pub buf_capacity: usize,
     pub decompress_buf_capacity: usize,
+    pub interner: Arc<dyn Interner>,
 }
 
 impl Default for ClientOptions {
@@ -264,6 +267,7 @@ impl Default for ClientOptions {
             num_interned_strings: 40_000,
             buf_capacity: 1024 * 16,
             decompress_buf_capacity: 1024 * 1024,
+            interner: Arc::new(SimpleInterner::new(40_000)),
         }
     }
 }

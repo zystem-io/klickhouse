@@ -9,10 +9,11 @@ pub struct Json<T>(pub T);
 
 impl<T: Serialize> ToSql for Json<T> {
     fn to_sql(self, _type_hint: Option<&Type>) -> Result<Value> {
-        Ok(Value::String(MaybeString::String(Arc::new(
+        let value = Arc::from(
             serde_json::to_string(&self.0)
                 .map_err(|e| KlickhouseError::SerializeError(e.to_string()))?,
-        ))))
+        );
+        Ok(Value::String(MaybeString::String(value)))
     }
 }
 

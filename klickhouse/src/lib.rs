@@ -72,5 +72,7 @@ pub use convert::*;
 pub use errors::*;
 pub use types::{Type, Tz};
 pub use values::*;
+mod interner;
 mod lock;
+
 pub use lock::ClickhouseLock;

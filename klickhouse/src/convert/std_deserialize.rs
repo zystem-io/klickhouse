@@ -176,7 +176,7 @@ impl FromSql for String {
     }
 }
 
-impl FromSql for Arc<String> {
+impl FromSql for Arc<str> {
     fn from_sql(type_: &Type, value: Value) -> Result<Self> {
         if !matches!(type_, Type::String | Type::FixedString(_)) {
             return Err(unexpected_type(type_));
@@ -187,7 +187,7 @@ impl FromSql for Arc<String> {
                 MaybeString::String(s) => Ok(s),
                 MaybeString::Bytes(b) => {
                     let s = String::from_utf8(b)?;
-                    Ok(Arc::new(s))
+                    Ok(Arc::from(s))
                 }
             },
             _ => unimplemented!(),
