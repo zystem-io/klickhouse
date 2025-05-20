@@ -26,17 +26,13 @@ pub(crate) const MAX_COMPRESSION_SIZE: u32 = 0x40000000;
 
 pub(crate) struct Context {
     pub(crate) string_buf: Vec<u8>,
-    pub(crate) decompress_buf: Option<Vec<u8>>,
     pub(crate) interner: Arc<dyn Interner>,
-    string_buf_capacity: usize,
-    decompress_buf_capacity: usize,
 }
 
 impl From<&ClientOptions> for Context {
     fn from(value: &ClientOptions) -> Self {
         Self::new(
             value.num_interned_strings,
-            value.buf_capacity,
             Arc::clone(&value.interner),
         )
     }
@@ -45,24 +41,12 @@ impl From<&ClientOptions> for Context {
 impl Context {
     pub(crate) fn new(
         string_buf_capacity: usize,
-        decompress_buf_capacity: usize,
         interner: Arc<dyn Interner>,
     ) -> Self {
         Self {
             interner,
             string_buf: Vec::with_capacity(string_buf_capacity),
-            decompress_buf: Some(Vec::with_capacity(decompress_buf_capacity)),
-            string_buf_capacity,
-            decompress_buf_capacity,
         }
-    }
-
-    pub(crate) fn cleanup(&mut self) {
-        self.string_buf.truncate(self.string_buf_capacity);
-        if let Some(buf) = self.decompress_buf.as_mut() {
-            buf.truncate(self.decompress_buf_capacity);
-        }
-        self.interner.cleanup();
     }
 }
 
@@ -79,11 +63,11 @@ impl<R: ClickhouseRead + 'static> InternalClientIn<R> {
         }
     }
 
-    async fn read_exception(&mut self) -> Result<ServerException> {
+    async fn read_exception(&mut self, state: &mut DeserializerState<'_>) -> Result<ServerException> {
         let code = self.reader.read_i32_le().await?;
-        let name = self.reader.read_utf8_string().await?;
-        let message = self.reader.read_utf8_string().await?;
-        let stack_trace = self.reader.read_utf8_string().await?;
+        let name = self.reader.read_utf8_string(state).await?;
+        let message = self.reader.read_utf8_string(state).await?;
+        let stack_trace = self.reader.read_utf8_string(state).await?;
         let has_nested = self.reader.read_u8().await? != 0;
 
         Ok(ServerException {
@@ -101,13 +85,10 @@ impl<R: ClickhouseRead + 'static> InternalClientIn<R> {
         compression: CompressionMethod,
         state: &mut DeserializerState<'_>,
     ) -> Result<Block> {
-        let buf = state.decompress_buf.take().unwrap();
         let mut reader =
-            crate::compression::DecompressionReader::new(compression, &mut self.reader, buf);
+            crate::compression::DecompressionReader::new(compression, &mut self.reader);
 
         let block = Block::read(&mut reader, self.server_hello.revision_version, state).await?;
-
-        state.decompress_buf = Some(buf);
 
         Ok(block)
     }
@@ -126,7 +107,7 @@ impl<R: ClickhouseRead + 'static> InternalClientIn<R> {
         compression: CompressionMethod,
         mut state: &mut DeserializerState<'_>,
     ) -> Result<ServerData> {
-        let table_name = self.reader.read_utf8_string().await?;
+        let table_name = self.reader.read_utf8_string(state).await?;
 
         let block = match compression {
             CompressionMethod::None => {
@@ -148,18 +129,18 @@ impl<R: ClickhouseRead + 'static> InternalClientIn<R> {
         let packet_id = ServerPacketId::from_u64(self.reader.read_var_uint().await?)?;
         let packet: Result<ServerPacket> = match packet_id {
             ServerPacketId::Hello => {
-                let server_name = self.reader.read_utf8_string().await?;
+                let server_name = self.reader.read_utf8_string(&mut state).await?;
                 let major_version = self.reader.read_var_uint().await?;
                 let minor_version = self.reader.read_var_uint().await?;
                 let revision_version = self.reader.read_var_uint().await?;
                 let timezone = if revision_version > DBMS_MIN_REVISION_WITH_SERVER_TIMEZONE {
-                    Some(self.reader.read_utf8_string().await?)
+                    Some(self.reader.read_utf8_string(&mut state).await?)
                 } else {
                     None
                 };
                 let display_name = if revision_version > DBMS_MIN_REVISION_WITH_SERVER_DISPLAY_NAME
                 {
-                    Some(self.reader.read_utf8_string().await?)
+                    Some(self.reader.read_utf8_string(&mut state).await?)
                 } else {
                     None
                 };
@@ -182,7 +163,7 @@ impl<R: ClickhouseRead + 'static> InternalClientIn<R> {
                 self.receive_data(CompressionMethod::default(), &mut state)
                     .await?,
             )),
-            ServerPacketId::Exception => Ok(ServerPacket::Exception(self.read_exception().await?)),
+            ServerPacketId::Exception => Ok(ServerPacket::Exception(self.read_exception(&mut state).await?)),
             ServerPacketId::Progress => {
                 let read_rows = self.reader.read_var_uint().await?;
                 let read_bytes = self.reader.read_var_uint().await?;
@@ -247,8 +228,8 @@ impl<R: ClickhouseRead + 'static> InternalClientIn<R> {
                     )));
                 }
                 for _ in 0..size {
-                    let database_name = self.reader.read_utf8_string().await?;
-                    let table_name = self.reader.read_utf8_string().await?;
+                    let database_name = self.reader.read_utf8_string(&mut state).await?;
+                    let table_name = self.reader.read_utf8_string(&mut state).await?;
                     let is_replicated = self.reader.read_u8().await? != 0;
                     let absolute_delay = if is_replicated {
                         self.reader.read_var_uint().await? as u32
@@ -271,8 +252,8 @@ impl<R: ClickhouseRead + 'static> InternalClientIn<R> {
             }
             ServerPacketId::Log => Ok(ServerPacket::Log(self.receive_log_data().await?)),
             ServerPacketId::TableColumns => {
-                let name = self.reader.read_utf8_string().await?;
-                let description = self.reader.read_utf8_string().await?;
+                let name = self.reader.read_utf8_string(&mut state).await?;
+                let description = self.reader.read_utf8_string(&mut state).await?;
                 Ok(ServerPacket::TableColumns(TableColumns {
                     name,
                     description,

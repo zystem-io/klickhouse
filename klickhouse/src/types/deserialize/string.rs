@@ -15,7 +15,14 @@ impl Deserializer for StringDeserializer {
         state: &mut DeserializerState<'_>,
     ) -> Result<Vec<Value>> {
         match type_ {
-            Type::String => reader.read_all_strings(state, rows).await,
+            Type::String => {
+                let mut out = Vec::with_capacity(rows);
+                for _ in 0..rows {
+                    out.push(Value::String(reader.read_string(state).await?));
+                }
+                
+                Ok(out)
+            },
             Type::FixedString(len) => {
                 let len = *len;
                 if len > state.string_buf.capacity() {

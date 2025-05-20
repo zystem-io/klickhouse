@@ -27,7 +27,7 @@ async fn roundtrip_values(type_: &Type, values: &[Value]) -> Result<Vec<Value>> 
     println!();
     let mut input = Cursor::new(output);
     let interner = SimpleInterner::new(5);
-    let mut context = Context::new(5, 5, Arc::new(interner));
+    let mut context = Context::new(5, Arc::new(interner));
     let mut state = DeserializerState::from(&mut context);
     type_.deserialize_prefix(&mut input, &mut state).await?;
     let deserialized = type_

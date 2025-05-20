@@ -41,7 +41,14 @@ impl PartialEq for MaybeString {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (MaybeString::String(l), MaybeString::String(r)) => Arc::ptr_eq(l, r) || l.eq(r),
-            (l, r) => l.as_ref() == r.as_ref(),
+            (MaybeString::Bytes(l), MaybeString::Bytes(r)) => {
+                if  l.as_ptr() != r.as_ptr() || l.len() != r.len()  {
+                    false
+                } else {
+                    l.eq(r)
+                }
+            }
+            _ => false
         }
     }
 }

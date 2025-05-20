@@ -211,7 +211,7 @@ impl<R: ClickhouseRead + 'static, W: ClickhouseWrite> InnerClient<R, W> {
                     self.receive_packet(packet).await?;
                 },
             }
-            context.cleanup();
+            // context.cleanup();
         }
     }
 

@@ -1,8 +1,7 @@
 use std::future::Future;
-
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
-use crate::{KlickhouseError, Result, Value};
+use crate::{KlickhouseError, MaybeString, Result, Value};
 
 use crate::protocol::MAX_STRING_SIZE;
 use crate::types::DeserializerState;
@@ -10,10 +9,14 @@ use crate::types::DeserializerState;
 pub trait ClickhouseRead: AsyncRead + Unpin + Send + Sync {
     fn read_var_uint(&mut self) -> impl Future<Output = Result<u64>> + Send;
 
-    fn read_string(&mut self) -> impl Future<Output = Result<Vec<u8>>> + Send;
+    fn read_string(&mut self, state: &mut DeserializerState<'_>) -> impl Future<Output = Result<MaybeString>> + Send;
 
-    fn read_utf8_string(&mut self) -> impl Future<Output = Result<String>> + Send {
-        async { Ok(String::from_utf8(self.read_string().await?)?) }
+    fn read_utf8_string(&mut self, state: &mut DeserializerState<'_>) -> impl Future<Output = Result<String>> + Send {
+        async { 
+            let s = self.read_string(state).await?;
+            let q = String::try_from(s)?;
+            Ok(q) 
+        }
     }
 
     fn read_all_strings(
@@ -37,7 +40,7 @@ impl<T: AsyncRead + Unpin + Send + Sync> ClickhouseRead for T {
         Ok(out)
     }
 
-    async fn read_string(&mut self) -> Result<Vec<u8>> {
+    async fn read_string(&mut self, state: &mut DeserializerState<'_>) -> Result<MaybeString> {
         let len = self.read_var_uint().await?;
         if len as usize > MAX_STRING_SIZE {
             return Err(KlickhouseError::ProtocolError(format!(
@@ -46,15 +49,17 @@ impl<T: AsyncRead + Unpin + Send + Sync> ClickhouseRead for T {
             )));
         }
         if len == 0 {
-            return Ok(vec![]);
+            return Ok(state.interner.intern_slice(&[]));
         }
         let mut buf = Vec::with_capacity(len as usize);
 
         let buf_mut = unsafe { std::slice::from_raw_parts_mut(buf.as_mut_ptr(), len as usize) };
         self.read_exact(buf_mut).await?;
         unsafe { buf.set_len(len as usize) };
+        
+        let interned = state.interner.intern_owned(buf);
 
-        Ok(buf)
+        Ok(interned)
     }
 
     async fn read_all_strings(

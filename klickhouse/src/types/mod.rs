@@ -24,7 +24,6 @@ use crate::{
 
 use crate::internal_client_in::Context;
 use crate::interner::Interner;
-use hashbrown::HashTable;
 
 /// A raw Clickhouse type.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -1032,7 +1031,6 @@ impl Type {
 pub struct DeserializerState<'a> {
     pub(crate) interner: Arc<dyn Interner>,
     pub(crate) string_buf: &'a mut Vec<u8>,
-    pub(crate) decompress_buf: Option<&'a mut Vec<u8>>,
 }
 
 impl<'a> From<&'a mut Context> for DeserializerState<'a> {
@@ -1040,7 +1038,6 @@ impl<'a> From<&'a mut Context> for DeserializerState<'a> {
         Self {
             interner: Arc::clone(&value.interner),
             string_buf: &mut value.string_buf,
-            decompress_buf: value.decompress_buf.as_mut(),
         }
     }
 }

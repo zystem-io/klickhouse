@@ -41,6 +41,8 @@ pub enum KlickhouseError {
     Io(#[from] std::io::Error),
     #[error("utf-8 conversion error: {0}")]
     Utf8(#[from] FromUtf8Error),
+    #[error("join failed")]
+    Join,
 }
 
 impl KlickhouseError {
@@ -89,6 +91,7 @@ impl Clone for KlickhouseError {
             }
             Self::Io(arg0) => Self::Io(std::io::Error::new(arg0.kind(), format!("{arg0}"))),
             Self::Utf8(arg0) => Self::Utf8(arg0.clone()),
+            Self::Join => Self::Join,
         }
     }
 }
