@@ -253,7 +253,6 @@ pub struct ClientOptions {
     pub tcp_nodelay: bool,
     pub num_interned_strings: usize,
     pub buf_capacity: usize,
-    pub decompress_buf_capacity: usize,
     pub interner: Arc<dyn Interner>,
 }
 
@@ -266,7 +265,6 @@ impl Default for ClientOptions {
             tcp_nodelay: true,
             num_interned_strings: 40_000,
             buf_capacity: 1024 * 16,
-            decompress_buf_capacity: 1024 * 1024,
             interner: Arc::new(SimpleInterner::new(40_000)),
         }
     }

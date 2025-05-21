@@ -101,14 +101,10 @@ impl<R: ClickhouseRead + 'static> InternalClientIn<R> {
         compression: CompressionMethod,
         state: &mut DeserializerState<'_>,
     ) -> Result<Block> {
-        let buf = state.decompress_buf.take().unwrap();
         let mut reader =
-            crate::compression::DecompressionReader::new(compression, &mut self.reader, buf);
+            crate::compression::DecompressionReader::new(compression, &mut self.reader);
 
         let block = Block::read(&mut reader, self.server_hello.revision_version, state).await?;
-
-        state.decompress_buf = Some(buf);
-
         Ok(block)
     }
 
