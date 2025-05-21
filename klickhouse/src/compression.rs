@@ -63,7 +63,7 @@ pub fn decompress_block(data: &[u8], decompressed_size: u32) -> Result<Vec<u8>> 
     Ok(output)
 }
 
-async fn read_compressed_blob<'a>(
+async fn read_compressed_blob(
     reader: &mut impl ClickhouseRead,
     compression: CompressionMethod,
 ) -> Result<Vec<u8>> {
