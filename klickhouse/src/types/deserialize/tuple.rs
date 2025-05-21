@@ -8,7 +8,7 @@ impl Deserializer for TupleDeserializer {
     async fn read_prefix<R: ClickhouseRead>(
         type_: &Type,
         reader: &mut R,
-        state: &mut DeserializerState,
+        state: &mut DeserializerState<'_>,
     ) -> Result<()> {
         match type_ {
             Type::Tuple(inner) => {
@@ -25,7 +25,7 @@ impl Deserializer for TupleDeserializer {
         type_: &Type,
         reader: &mut R,
         rows: usize,
-        state: &mut DeserializerState,
+        state: &mut DeserializerState<'_>,
     ) -> Result<Vec<Value>> {
         let types = type_.unwrap_tuple();
         let mut tuples = vec![Value::Tuple(Vec::with_capacity(types.len())); rows];

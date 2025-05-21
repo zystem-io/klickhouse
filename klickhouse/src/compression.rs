@@ -91,8 +91,11 @@ async fn read_compressed_blob(
             compressed_size
         )));
     }
+
+    let mut compressed = vec![0; compressed_size as usize];
+
     let decompressed_size = reader.read_u32_le().await?;
-    let mut compressed = vec![0u8; compressed_size as usize];
+
     reader.read_exact(&mut compressed[9..]).await?;
     compressed[0] = type_byte;
     compressed[1..5].copy_from_slice(&compressed_size.to_le_bytes()[..]);
@@ -104,7 +107,7 @@ async fn read_compressed_blob(
             calc_checksum, checksum
         )));
     }
-    let raw_block = crate::compression::decompress_block(&compressed[9..], decompressed_size)?;
+    let raw_block = decompress_block(&compressed[9..], decompressed_size)?;
     Ok(raw_block)
 }
 

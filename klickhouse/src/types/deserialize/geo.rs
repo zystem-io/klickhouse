@@ -10,7 +10,7 @@ impl Deserializer for PointDeserializer {
     async fn read_prefix<R: ClickhouseRead>(
         _type_: &Type,
         reader: &mut R,
-        state: &mut DeserializerState,
+        state: &mut DeserializerState<'_>,
     ) -> Result<()> {
         for _ in 0..2 {
             Type::Float64.deserialize_prefix(reader, state).await?;
@@ -22,7 +22,7 @@ impl Deserializer for PointDeserializer {
         _type_: &Type,
         reader: &mut R,
         rows: usize,
-        state: &mut DeserializerState,
+        state: &mut DeserializerState<'_>,
     ) -> Result<Vec<Value>> {
         let mut points = vec![Value::Point(Default::default()); rows];
         for col in 0..2 {

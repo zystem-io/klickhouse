@@ -1,8 +1,9 @@
-use std::collections::VecDeque;
-
 use futures_util::{stream, Stream, StreamExt};
 use indexmap::IndexMap;
 use protocol::CompressionMethod;
+use std::collections::VecDeque;
+use std::fmt::Debug;
+use std::sync::Arc;
 use tokio::{
     io::{AsyncRead, AsyncWrite, BufReader, BufWriter},
     net::{TcpStream, ToSocketAddrs},
@@ -16,6 +17,8 @@ use tokio::{
 use tokio_stream::wrappers::ReceiverStream;
 use uuid::Uuid;
 
+use crate::internal_client_in::Context;
+use crate::interner::{Interner, SimpleInterner};
 use crate::{
     block::{Block, BlockInfo},
     convert::Row,
@@ -107,7 +110,9 @@ impl<R: ClickhouseRead + 'static, W: ClickhouseWrite> InnerClient<R, W> {
 
     async fn handle_request(&mut self, request: ClientRequest) -> Result<()> {
         match request.data {
-            ClientRequestData::Query { query, response } => {
+            ClientRequestData::Query {
+                query, response, ..
+            } => {
                 let query = PendingQuery { query, response };
                 if self.pending_queries.is_empty() && self.executing_query.is_none() {
                     self.dispatch_query(query).await?;
@@ -180,6 +185,8 @@ impl<R: ClickhouseRead + 'static, W: ClickhouseWrite> InnerClient<R, W> {
     }
 
     async fn run_inner(mut self, mut input: Receiver<ClientRequest>) -> Result<()> {
+        let mut context = Context::from(&self.options);
+
         self.output
             .send_hello(ClientHello {
                 default_database: &self.options.default_database,
@@ -187,7 +194,7 @@ impl<R: ClickhouseRead + 'static, W: ClickhouseWrite> InnerClient<R, W> {
                 password: &self.options.password,
             })
             .await?;
-        let hello_response = self.input.receive_hello().await?;
+        let hello_response = self.input.receive_hello(&mut context).await?;
         self.input.server_hello = hello_response.clone();
         self.output.server_hello = hello_response.clone();
 
@@ -199,11 +206,12 @@ impl<R: ClickhouseRead + 'static, W: ClickhouseWrite> InnerClient<R, W> {
                     }
                     self.handle_request(request.unwrap()).await?;
                 },
-                packet = self.input.receive_packet() => {
+                packet = self.input.receive_packet(&mut context) => {
                     let packet = packet?;
                     self.receive_packet(packet).await?;
                 },
             }
+            context.cleanup();
         }
     }
 
@@ -243,6 +251,9 @@ pub struct ClientOptions {
     pub password: String,
     pub default_database: String,
     pub tcp_nodelay: bool,
+    pub num_interned_strings: usize,
+    pub buf_capacity: usize,
+    pub interner: Arc<dyn Interner>,
 }
 
 impl Default for ClientOptions {
@@ -252,6 +263,9 @@ impl Default for ClientOptions {
             password: String::new(),
             default_database: String::new(),
             tcp_nodelay: true,
+            num_interned_strings: 40_000,
+            buf_capacity: 1024 * 16,
+            interner: Arc::new(SimpleInterner::new(40_000)),
         }
     }
 }

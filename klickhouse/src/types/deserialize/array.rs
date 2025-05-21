@@ -34,7 +34,7 @@ impl<T: ArrayDeserializerGeneric + 'static> Deserializer for T {
     async fn read_prefix<R: ClickhouseRead>(
         type_: &Type,
         reader: &mut R,
-        state: &mut DeserializerState,
+        state: &mut DeserializerState<'_>,
     ) -> Result<()> {
         Self::inner_type(type_)
             .deserialize_prefix(reader, state)
@@ -45,12 +45,12 @@ impl<T: ArrayDeserializerGeneric + 'static> Deserializer for T {
         type_: &Type,
         reader: &mut R,
         rows: usize,
-        state: &mut DeserializerState,
+        state: &mut DeserializerState<'_>,
     ) -> Result<Vec<Value>> {
         if rows == 0 {
             return Ok(vec![]);
         }
-        let mut offsets = vec![];
+        let mut offsets = Vec::with_capacity(rows);
         for _ in 0..rows {
             offsets.push(reader.read_u64_le().await?);
         }

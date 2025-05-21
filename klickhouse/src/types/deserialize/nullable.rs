@@ -10,7 +10,7 @@ impl Deserializer for NullableDeserializer {
     async fn read_prefix<R: ClickhouseRead>(
         type_: &Type,
         reader: &mut R,
-        state: &mut DeserializerState,
+        state: &mut DeserializerState<'_>,
     ) -> Result<()> {
         match type_ {
             Type::Nullable(inner) => {
@@ -25,7 +25,7 @@ impl Deserializer for NullableDeserializer {
         type_: &Type,
         reader: &mut R,
         rows: usize,
-        state: &mut DeserializerState,
+        state: &mut DeserializerState<'_>,
     ) -> Result<Vec<Value>> {
         // if mask[i] == 0, item is present
         let mut mask = vec![0u8; rows];

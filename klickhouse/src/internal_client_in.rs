@@ -1,4 +1,5 @@
-use crate::Result;
+use crate::interner::Interner;
+use crate::types::DeserializerState;
 use crate::{
     block::Block,
     io::ClickhouseRead,
@@ -12,14 +13,58 @@ use crate::{
     },
     KlickhouseError,
 };
+use crate::{ClientOptions, Result};
 use indexmap::IndexMap;
 use log::trace;
 use protocol::ServerPacketId;
+use std::sync::Arc;
 use tokio::io::AsyncReadExt;
 use uuid::Uuid;
 
 #[cfg(feature = "compression")]
 pub(crate) const MAX_COMPRESSION_SIZE: u32 = 0x40000000;
+
+pub(crate) struct Context {
+    pub(crate) string_buf: Vec<u8>,
+    pub(crate) decompress_buf: Option<Vec<u8>>,
+    pub(crate) interner: Arc<dyn Interner>,
+    string_buf_capacity: usize,
+    decompress_buf_capacity: usize,
+}
+
+impl From<&ClientOptions> for Context {
+    fn from(value: &ClientOptions) -> Self {
+        Self::new(
+            value.num_interned_strings,
+            value.buf_capacity,
+            Arc::clone(&value.interner),
+        )
+    }
+}
+
+impl Context {
+    pub(crate) fn new(
+        string_buf_capacity: usize,
+        decompress_buf_capacity: usize,
+        interner: Arc<dyn Interner>,
+    ) -> Self {
+        Self {
+            interner,
+            string_buf: Vec::with_capacity(string_buf_capacity),
+            decompress_buf: Some(Vec::with_capacity(decompress_buf_capacity)),
+            string_buf_capacity,
+            decompress_buf_capacity,
+        }
+    }
+
+    pub(crate) fn cleanup(&mut self) {
+        self.string_buf.truncate(self.string_buf_capacity);
+        if let Some(buf) = self.decompress_buf.as_mut() {
+            buf.truncate(self.decompress_buf_capacity);
+        }
+        self.interner.cleanup();
+    }
+}
 
 pub struct InternalClientIn<R: ClickhouseRead> {
     reader: R,
@@ -51,28 +96,39 @@ impl<R: ClickhouseRead + 'static> InternalClientIn<R> {
     }
 
     #[cfg(feature = "compression")]
-    async fn decompress_data(&mut self, compression: CompressionMethod) -> Result<Block> {
+    async fn decompress_data(
+        &mut self,
+        compression: CompressionMethod,
+        state: &mut DeserializerState<'_>,
+    ) -> Result<Block> {
         let mut reader =
             crate::compression::DecompressionReader::new(compression, &mut self.reader);
 
-        let block = Block::read(&mut reader, self.server_hello.revision_version).await?;
-
+        let block = Block::read(&mut reader, self.server_hello.revision_version, state).await?;
         Ok(block)
     }
 
     #[cfg(not(feature = "compression"))]
-    async fn decompress_data(&mut self, _compression: CompressionMethod) -> Result<Block> {
+    async fn decompress_data(
+        &mut self,
+        _compression: CompressionMethod,
+        _state: &mut DeserializerState<'_>,
+    ) -> Result<Block> {
         panic!("attempted to use compression when not compiled with `compression` feature in klickhouse");
     }
 
-    async fn receive_data(&mut self, compression: CompressionMethod) -> Result<ServerData> {
+    async fn receive_data(
+        &mut self,
+        compression: CompressionMethod,
+        state: &mut DeserializerState<'_>,
+    ) -> Result<ServerData> {
         let table_name = self.reader.read_utf8_string().await?;
 
         let block = match compression {
             CompressionMethod::None => {
-                Block::read(&mut self.reader, self.server_hello.revision_version).await?
+                Block::read(&mut self.reader, self.server_hello.revision_version, state).await?
             }
-            _ => self.decompress_data(compression).await?,
+            _ => self.decompress_data(compression, state).await?,
         };
 
         Ok(ServerData { table_name, block })
@@ -82,7 +138,9 @@ impl<R: ClickhouseRead + 'static> InternalClientIn<R> {
         unimplemented!()
     }
 
-    pub async fn receive_packet(&mut self) -> Result<ServerPacket> {
+    pub async fn receive_packet(&mut self, context: &mut Context) -> Result<ServerPacket> {
+        let mut state = DeserializerState::from(context);
+
         let packet_id = ServerPacketId::from_u64(self.reader.read_var_uint().await?)?;
         let packet: Result<ServerPacket> = match packet_id {
             ServerPacketId::Hello => {
@@ -117,7 +175,8 @@ impl<R: ClickhouseRead + 'static> InternalClientIn<R> {
                 }))
             }
             ServerPacketId::Data => Ok(ServerPacket::Data(
-                self.receive_data(CompressionMethod::default()).await?,
+                self.receive_data(CompressionMethod::default(), &mut state)
+                    .await?,
             )),
             ServerPacketId::Exception => Ok(ServerPacket::Exception(self.read_exception().await?)),
             ServerPacketId::Progress => {
@@ -165,10 +224,12 @@ impl<R: ClickhouseRead + 'static> InternalClientIn<R> {
                 }))
             }
             ServerPacketId::Totals => Ok(ServerPacket::Totals(
-                self.receive_data(CompressionMethod::default()).await?,
+                self.receive_data(CompressionMethod::default(), &mut state)
+                    .await?,
             )),
             ServerPacketId::Extremes => Ok(ServerPacket::Extremes(
-                self.receive_data(CompressionMethod::default()).await?,
+                self.receive_data(CompressionMethod::default(), &mut state)
+                    .await?,
             )),
             ServerPacketId::TablesStatusResponse => {
                 let mut response = TablesStatusResponse {
@@ -238,8 +299,8 @@ impl<R: ClickhouseRead + 'static> InternalClientIn<R> {
         Ok(packet)
     }
 
-    pub async fn receive_hello(&mut self) -> Result<ServerHello> {
-        match self.receive_packet().await? {
+    pub async fn receive_hello(&mut self, context: &mut Context) -> Result<ServerHello> {
+        match self.receive_packet(context).await? {
             ServerPacket::Hello(hello) => Ok(hello),
             ServerPacket::Exception(e) => Err(e.emit()),
             packet => Err(KlickhouseError::ProtocolError(format!(

@@ -1,6 +1,7 @@
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use std::sync::Arc;
 
-use crate::{FromSql, KlickhouseError, Result, ToSql, Type, Value};
+use crate::{FromSql, KlickhouseError, MaybeString, Result, ToSql, Type, Value};
 
 /// A `Vec` wrapper that is encoded as a tuple in SQL as opposed to a Vec
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -8,11 +9,11 @@ pub struct Json<T>(pub T);
 
 impl<T: Serialize> ToSql for Json<T> {
     fn to_sql(self, _type_hint: Option<&Type>) -> Result<Value> {
-        Ok(Value::String(
+        let value = Arc::from(
             serde_json::to_string(&self.0)
-                .map_err(|e| KlickhouseError::SerializeError(e.to_string()))?
-                .into_bytes(),
-        ))
+                .map_err(|e| KlickhouseError::SerializeError(e.to_string()))?,
+        );
+        Ok(Value::String(MaybeString::String(value)))
     }
 }
 

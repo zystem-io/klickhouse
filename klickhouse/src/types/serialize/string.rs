@@ -32,8 +32,8 @@ impl Serializer for StringSerializer {
     ) -> Result<()> {
         for value in values {
             match value.justify_null_ref(type_).as_ref() {
-                Value::String(bytes) => {
-                    emit_bytes(type_, bytes, writer).await?;
+                Value::String(s) => {
+                    emit_bytes(type_, s.as_ref(), writer).await?;
                 }
                 Value::Array(items) => {
                     // validate function already confirmed the types here (it's an indirect Vec<u8>/Vec<i8>)
