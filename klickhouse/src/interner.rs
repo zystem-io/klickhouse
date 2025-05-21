@@ -12,7 +12,7 @@ pub trait Interner: Debug + Send + Sync {
 
 #[derive(Debug)]
 pub struct SimpleInterner {
-    pub(crate) interned_strings: Arc<RwLock<HashTable<MaybeString>>>,
+    interned_strings: Arc<RwLock<HashTable<MaybeString>>>,
     n_strings: usize,
 }
 

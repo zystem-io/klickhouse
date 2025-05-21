@@ -120,7 +120,7 @@ impl<R: ClickhouseRead + 'static> InternalClientIn<R> {
     async fn receive_data(
         &mut self,
         compression: CompressionMethod,
-        mut state: &mut DeserializerState<'_>,
+        state: &mut DeserializerState<'_>,
     ) -> Result<ServerData> {
         let table_name = self.reader.read_utf8_string().await?;
 
@@ -128,7 +128,7 @@ impl<R: ClickhouseRead + 'static> InternalClientIn<R> {
             CompressionMethod::None => {
                 Block::read(&mut self.reader, self.server_hello.revision_version, state).await?
             }
-            _ => self.decompress_data(compression, &mut state).await?,
+            _ => self.decompress_data(compression, state).await?,
         };
 
         Ok(ServerData { table_name, block })

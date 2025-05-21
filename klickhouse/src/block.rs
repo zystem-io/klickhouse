@@ -180,7 +180,7 @@ impl Block {
     pub(crate) async fn read<R: ClickhouseRead>(
         reader: &mut R,
         revision: u64,
-        mut state: &mut DeserializerState<'_>,
+        state: &mut DeserializerState<'_>,
     ) -> Result<Self> {
         let info = if revision > 0 {
             BlockInfo::read(reader).await?
@@ -201,9 +201,9 @@ impl Block {
             let type_ = Type::from_str(&type_name)?;
             block.column_types.insert(name.clone(), type_.clone());
             let row_data = if rows > 0 {
-                type_.deserialize_prefix(reader, &mut state).await?;
+                type_.deserialize_prefix(reader, state).await?;
                 type_
-                    .deserialize_column(reader, rows as usize, &mut state)
+                    .deserialize_column(reader, rows as usize, state)
                     .await?
             } else {
                 vec![]
